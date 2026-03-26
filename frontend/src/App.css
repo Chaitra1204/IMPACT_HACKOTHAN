@@ -1,0 +1,123 @@
+.clinical-range {
+  width: 100%;
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(3, 105, 161, 0.22) 0%, rgba(3, 105, 161, 0.12) 100%);
+  outline: none;
+}
+
+.clinical-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 3px solid #f8fafc;
+  background: #0369a1;
+  box-shadow: 0 3px 10px rgba(3, 105, 161, 0.35);
+  cursor: pointer;
+}
+
+.clinical-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 3px solid #f8fafc;
+  background: #0369a1;
+  box-shadow: 0 3px 10px rgba(3, 105, 161, 0.35);
+  cursor: pointer;
+}
+
+.record-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(3, 105, 161, 0.3);
+  background: white;
+  padding: 10px 14px;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.record-button.is-recording {
+  position: relative;
+  color: #0369a1;
+  border-color: rgba(3, 105, 161, 0.55);
+}
+
+.record-button.is-recording::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  border: 2px solid rgba(3, 105, 161, 0.35);
+  animation: pulse-ring 1.3s ease-out infinite;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #ef4444;
+  animation: recording-blink 1s ease-in-out infinite;
+}
+
+.medical-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: white;
+  animation: spin 0.75s linear infinite;
+}
+
+.dash-spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 3px solid rgba(3, 105, 161, 0.2);
+  border-top-color: #0369a1;
+  animation: spin 0.8s linear infinite;
+}
+
+.breathing-orb {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 35%, #93c5fd 0%, #0369a1 70%);
+  box-shadow: 0 8px 20px rgba(3, 105, 161, 0.3);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.94);
+  }
+  70% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes recording-blink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 1;
+  }
+}

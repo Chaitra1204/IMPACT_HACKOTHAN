@@ -1,17 +1,64 @@
-# Python virtual environments
-.venv/
-venv/
-env/
-
-# Environment variables
-.env
-
-# Python cache/build artifacts
+# Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-.pytest_cache/
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv
 
-# Runtime data
-data/
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm
+package-lock.json
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Audio Files
+/backend/data/*.wav
+/backend/data/*.mp3
+/backend/data/*.flac
+/backend/data/*.ogg
+
+# Build outputs
+/frontend/dist
+/frontend/.vite
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Misc
+.cache/
+.pytest_cache/
+coverage/

@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  background: linear-gradient(160deg, #f4f8ff 0%, #edf5ff 55%, #ffffff 100%);
+  color: #111;
+}
