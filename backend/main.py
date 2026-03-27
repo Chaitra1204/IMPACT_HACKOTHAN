@@ -101,8 +101,8 @@ MOOD_LIBRARY = {
             "Protect your wind-down time to consolidate gains.",
             "Keep one social activity this week to avoid isolation drift.",
         ],
-        "event_keywords": "Live Gigs OR Gallery Openings",
-        "event_category_ids": ["103", "105"],
+        "event_keywords": "Music OR Festival",
+        "event_category_ids": ["103"],
         "clinical_recommendation": "Prescribed to reinforce positive reward circuits through healthy social engagement.",
     },
     "socially_active": {
@@ -114,8 +114,8 @@ MOOD_LIBRARY = {
             "Balance activity with one focused solo recovery block.",
             "Track how social contact shifts your stress index over time.",
         ],
-        "event_keywords": "Live Gigs OR Gallery Openings",
-        "event_category_ids": ["103", "105"],
+        "event_keywords": "Music OR Festival",
+        "event_category_ids": ["103"],
         "clinical_recommendation": "Prescribed to maintain protective social factors against burnout relapse.",
     },
     "relaxed": {
@@ -127,8 +127,8 @@ MOOD_LIBRARY = {
             "Keep your current screen limits for another 48 hours.",
             "Schedule one nourishing offline activity this week.",
         ],
-        "event_keywords": "Gallery Openings OR Acoustic Live",
-        "event_category_ids": ["103", "105"],
+        "event_keywords": "Music OR Festival",
+        "event_category_ids": ["103"],
         "clinical_recommendation": "Prescribed to stabilize recovery gains and prevent rebound strain.",
     },
 }
@@ -156,13 +156,11 @@ async def analyze_trends(
         }
 
     recent = sorted(history, key=lambda item: item.get("timestamp", ""), reverse=True)[:days]
-    daily = _aggregate_daily_metrics(recent)
     seven_day_entries = recent[:7]
     seven_day_average = sum(float(item.get("stress_index", 0)) for item in seven_day_entries) / max(len(seven_day_entries), 1)
 
-    chronic_streak = _compute_chronic_streak(daily)
-    is_chronic = chronic_streak > 5
-    is_progressing = current_stress_index <= (seven_day_average * 0.8 if seven_day_average else 0)
+    is_chronic = seven_day_average > 70
+    is_progressing = current_stress_index <= (seven_day_average * 0.85 if seven_day_average else 0)
 
     saved_screen_hours = 0.0
     if seven_day_entries:
@@ -189,7 +187,7 @@ async def analyze_trends(
         "message": message,
         "days_analyzed": len(recent),
         "seven_day_average": round(seven_day_average, 2),
-        "consecutive_chronic_days": chronic_streak,
+        "consecutive_chronic_days": 0,
         "is_chronic": is_chronic,
         "is_progressing": is_progressing,
         "saved_screen_hours": round(saved_screen_hours, 1),
@@ -216,45 +214,6 @@ def _resolve_history_payload(history_json: str) -> list:
             print(f"Trend file parse warning: {exc}")
 
     return []
-
-
-def _aggregate_daily_metrics(history: list) -> list:
-    grouped = {}
-    for entry in history:
-        timestamp = entry.get("timestamp")
-        try:
-            date_key = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).date().isoformat()
-        except Exception:
-            continue
-
-        grouped.setdefault(date_key, {"screen": [], "sedentary": []})
-        grouped[date_key]["screen"].append(float(entry.get("screen_time", 0.0)))
-        grouped[date_key]["sedentary"].append(float(entry.get("sedentary_time", 0.0)))
-
-    daily = []
-    for date_key in sorted(grouped.keys()):
-        screen_values = grouped[date_key]["screen"]
-        sedentary_values = grouped[date_key]["sedentary"]
-        daily.append(
-            {
-                "date": date_key,
-                "avg_screen_time": sum(screen_values) / max(len(screen_values), 1),
-                "avg_sedentary_time": sum(sedentary_values) / max(len(sedentary_values), 1),
-            }
-        )
-    return daily
-
-
-def _compute_chronic_streak(daily_metrics: list) -> int:
-    streak = 0
-    best_streak = 0
-    for day in daily_metrics:
-        if day["avg_screen_time"] > 8 and day["avg_sedentary_time"] > 6:
-            streak += 1
-            best_streak = max(best_streak, streak)
-        else:
-            streak = 0
-    return best_streak
 
 
 async def _build_victory_message(saved_screen_hours: float, current_stress_index: float, seven_day_average: float) -> str:
@@ -444,7 +403,7 @@ async def analyze_usage_info():
             "sleep_hours",
             "user_text"
         ],
-        "optional_fields": ["audio_file"]
+        "optional_fields": ["audio_file", "history_avg"]
     }
 
 
@@ -454,7 +413,8 @@ async def analyze_mental_health(
     sedentary_time: float = Form(...),
     sleep_hours: float = Form(...),
     user_text: str = Form(...),
-    audio_file: UploadFile = File(None)
+    audio_file: UploadFile = File(None),
+    history_avg: float | None = Form(default=None)
 ):
     """
     Comprehensive mental health analysis endpoint.
@@ -476,11 +436,27 @@ async def analyze_mental_health(
     vocal_analysis = None
 
     try:
+        if screen_time < 0 or sedentary_time < 0:
+            raise HTTPException(status_code=422, detail="screen_time and sedentary_time must be non-negative")
+        if sleep_hours < 0 or sleep_hours > 24:
+            raise HTTPException(status_code=422, detail="sleep_hours must be between 0 and 24")
+        if history_avg is not None and (history_avg < 0 or history_avg > 100):
+            raise HTTPException(status_code=422, detail="history_avg must be between 0 and 100")
+        if not (user_text or "").strip():
+            raise HTTPException(status_code=422, detail="user_text is required")
+
         # ============ Audio Processing (if provided) ============
         if audio_file and audio_file.filename:
+            extension = Path(audio_file.filename).suffix.lower()
+            allowed_audio_extensions = {".wav", ".webm", ".ogg", ".mp3", ".mpeg", ".m4a", ".mp4", ".aac"}
+            if extension not in allowed_audio_extensions:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Unsupported audio format. Use wav, webm, ogg, mp3, m4a, or mp4",
+                )
+
             # Generate unique filename
-            file_extension = Path(audio_file.filename).suffix
-            unique_filename = f"{uuid.uuid4()}{file_extension}"
+            unique_filename = f"{uuid.uuid4()}{extension}"
             audio_file_path = DATA_DIR / unique_filename
 
             # Save uploaded file
@@ -508,12 +484,21 @@ async def analyze_mental_health(
         stress_index = stress_results["stress_index"]
         burnout_status = determine_burnout_status(stress_index, vocal_fatigue_score)
 
+        trend_status = "WATCHFUL_STABILITY"
+        if history_avg is not None:
+            if history_avg > 70:
+                trend_status = "CHRONIC_BURN_RISK"
+            elif stress_index <= history_avg * 0.85:
+                trend_status = "RECOVERY_EXCELLENCE"
+
         # ============ Gemini Analysis ============
         gemini_response = await _get_gemini_insight(
             stress_results=stress_results,
             vocal_fatigue_score=vocal_fatigue_score,
             user_text=user_text,
-            burnout_status=burnout_status
+            burnout_status=burnout_status,
+            history_avg=history_avg,
+            trend_status=trend_status,
         )
 
         # ============ Compile Response ============
@@ -521,10 +506,14 @@ async def analyze_mental_health(
             "analysis_complete": True,
             "stress_index": stress_index,
             "burnout_status": burnout_status,
+            "status": trend_status if trend_status != "WATCHFUL_STABILITY" else burnout_status,
+            "trend_status": trend_status,
+            "history_avg": history_avg,
             "stress_breakdown": {
                 "screen_score": stress_results["screen_score"],
                 "sedentary_score": stress_results["sedentary_score"],
                 "sleep_score": stress_results["sleep_score"],
+                "vocal_score": stress_results.get("vocal_score", 0.0),
             },
             "vocal_analysis": vocal_analysis if has_audio else None,
             "vocal_penalty_applied": stress_results["vocal_penalty_applied"],
@@ -533,6 +522,8 @@ async def analyze_mental_health(
 
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -549,7 +540,9 @@ async def _get_gemini_insight(
     stress_results: dict,
     vocal_fatigue_score: float,
     user_text: str,
-    burnout_status: str
+    burnout_status: str,
+    history_avg: float | None,
+    trend_status: str,
 ) -> dict:
     """
     Send data to Google Gemini for compassionate AI analysis.
@@ -572,6 +565,13 @@ async def _get_gemini_insight(
         )
 
     try:
+        biomarker_instruction = ""
+        if vocal_fatigue_score > 0.7:
+            biomarker_instruction = (
+                "You must explicitly mention either 'vocal flatness' or 'prosodic narrowing' "
+                "as a clinical biomarker in the insight."
+            )
+
         # Prepare context prompt
         stress_index = stress_results["stress_index"]
         context = f"""
@@ -582,7 +582,15 @@ User Assessment:
 - Sedentary Time: {stress_results['components']['sedentary_time_hours']} hours
 - Sleep: {stress_results['components']['sleep_hours']} hours
 - Vocal Fatigue: {vocal_fatigue_score:.2f}/1.0
+- Screen Score: {stress_results.get('screen_score', 0.0):.1f}
+- Sedentary Score: {stress_results.get('sedentary_score', 0.0):.1f}
+- Sleep Score: {stress_results.get('sleep_score', 0.0):.1f}
+- Vocal Component (0-100): {stress_results.get('vocal_score', 0.0):.1f}
+- 4-factor formula: (screen*0.4)+(sedentary*0.2)+(sleep*0.2)+(vocal*0.2)
+- 7-day History Average: {history_avg if history_avg is not None else 'not provided'}
+- Temporal Status: {trend_status}
 - User Statement: "{user_text}"
+{biomarker_instruction}
 """
 
         # System instruction for Gemini
@@ -591,6 +599,7 @@ User Assessment:
     If the trend is progressing, use an enthusiastic, celebratory tone.
     Always bridge the gap between digital habits and real-world social prescriptions.
     Your role is to analyze user data with empathy and provide actionable, evidence-based guidance.
+    If vocal fatigue is above 0.7, explicitly mention 'vocal flatness' or 'prosodic narrowing' as a clinical biomarker.
 
 IMPORTANT: You MUST respond ONLY with valid JSON in this exact format:
 {
