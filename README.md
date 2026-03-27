@@ -1,4 +1,4 @@
-# Sukoon: Digital Vitality Sentry
+# Sukoon: AI Mental Health Assistant
 
 Sukoon is a clinical-inspired digital wellbeing platform that detects early burnout signals from daily behavior and optional voice biomarkers. It translates raw lifestyle patterns into actionable recovery guidance, safety escalation, and a longitudinal stress timeline.
 
