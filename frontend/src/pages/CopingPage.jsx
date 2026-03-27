@@ -6,14 +6,14 @@ import { Link, useLocation } from 'react-router-dom'
 const highStressOptions = [
   { key: 'work_pressure', label: 'Work Pressure' },
   { key: 'digital_fatigue', label: 'Digital Fatigue' },
-  { key: 'lonely', label: 'Lonely' },
+  { key: 'lonely', label: 'Social Isolation' },
   { key: 'other', label: 'Other' },
 ]
 
 const lowStressOptions = [
-  { key: 'productive', label: 'Productive' },
-  { key: 'socially_active', label: 'Socially Active' },
-  { key: 'relaxed', label: 'Relaxed' },
+  { key: 'productive', label: 'Achievement' },
+  { key: 'socially_active', label: 'Social Joy' },
+  { key: 'relaxed', label: 'Creative Flow' },
   { key: 'other', label: 'Other' },
 ]
 
@@ -42,7 +42,7 @@ function CopingPage() {
   const [showSafetyModal, setShowSafetyModal] = useState(false)
   const [safetyExpanded, setSafetyExpanded] = useState(false)
   const [selectedMood, setSelectedMood] = useState('work_pressure')
-  const [customCause, setCustomCause] = useState('')
+  const [customMood, setCustomMood] = useState('')
   const [city, setCity] = useState('Bengaluru')
   const [journalEntry, setJournalEntry] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
@@ -65,13 +65,17 @@ function CopingPage() {
 
   const burnoutStatus = analysis?.burnout_status || 'Low'
   const stressIndex = Number(analysis?.stress_index || 0)
-  const moodOptions = stressIndex >= 50 ? highStressOptions : lowStressOptions
+  const isStressedMode = stressIndex > 60
+  const isSparkMode = stressIndex < 30
+  const moodOptions = isSparkMode ? lowStressOptions : highStressOptions
+  const selectedMoodForApi =
+    selectedMood === 'other' ? (isSparkMode ? 'productive' : 'work_pressure') : selectedMood
   const escalationRequired = Boolean(
     analysis?.escalation_required ?? analysis?.gemini_insight?.escalation
   )
 
   useEffect(() => {
-    const nextDefaultMood = stressIndex >= 50 ? 'work_pressure' : 'productive'
+    const nextDefaultMood = stressIndex < 30 ? 'productive' : 'work_pressure'
     setSelectedMood(nextDefaultMood)
   }, [stressIndex])
 
@@ -87,7 +91,7 @@ function CopingPage() {
     setIsLoadingPlan(true)
     try {
       const query = new URLSearchParams({
-        mood: selectedMood === 'other' ? 'work_pressure' : selectedMood,
+        mood: selectedMoodForApi,
         city,
         burnout_status: burnoutStatus,
         stress_index: String(stressIndex),
@@ -102,7 +106,10 @@ function CopingPage() {
       setContextualPlan({
         ...fallbackContext,
         ...payload,
-        mood_title: selectedMood === 'other' && customCause.trim() ? `Other: ${customCause.trim()}` : payload.mood_title,
+        mood_title:
+          selectedMood === 'other' && customMood.trim()
+            ? `${payload.mood_title} - Focus: ${customMood.trim()}`
+            : payload.mood_title,
       })
     } catch (error) {
       setPlanError(error.message || 'Unable to fetch recommendations right now.')
@@ -129,7 +136,7 @@ function CopingPage() {
       ...updated[0],
       coping_context: {
         mood_choice: selectedMood,
-        custom_cause: selectedMood === 'other' ? customCause.trim() : '',
+        custom_mood: customMood.trim(),
         journal_entry: journalEntry,
         city,
         saved_at: new Date().toISOString(),
@@ -145,30 +152,35 @@ function CopingPage() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
       transition={{ duration: 0.3 }}
-      className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#eff6ff_0%,_#f8fafc_45%,_#ffffff_100%)] px-6 py-10 text-slate-800"
+      className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#e0f2fe_0%,_#f8fafc_42%,_#ffffff_100%)] px-4 py-8 text-slate-800 sm:px-6 sm:py-10"
     >
-      <section className="mx-auto w-full max-w-6xl space-y-6">
-        <section className="rounded-3xl border border-sky-200/70 bg-white/85 p-8 shadow-[0_20px_40px_rgba(3,105,161,0.08)] backdrop-blur">
-          <h1 className="text-3xl font-semibold text-slate-900">Contextual Coping Layer</h1>
-          <p className="mt-2 text-slate-600">
-            Poll what is most true right now and Sukoon will generate focused coping prompts,
-            uplifting insight, and real-world nearby events.
+      <section className="mx-auto w-full max-w-7xl space-y-6">
+        <section className="relative overflow-hidden rounded-3xl border border-sky-200/70 bg-white/90 p-6 shadow-[0_22px_50px_rgba(3,105,161,0.10)] backdrop-blur md:p-8">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-sky-100/70 blur-2xl" />
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700/80">Action Layer</p>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-900 md:text-4xl">Personalized Coping Studio</h1>
+          <p className="mt-3 max-w-3xl text-slate-600">
+            Select what feels most true, then Sukoon builds a focused coping protocol and local social prescriptions.
           </p>
-          <div className="mt-4 inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-semibold text-sky-700">
-            Current Status: {burnoutStatus} | Stress Index: {stressIndex.toFixed(1)}
+          <div className="mt-5 inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-800">
+            Status: {burnoutStatus} • Stress Index: {stressIndex.toFixed(1)}
           </div>
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_12px_32px_rgba(15,23,42,0.08)]">
+          <article className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
             <h2 className="text-xl font-semibold text-slate-900">Mood Deep-Dive</h2>
             <p className="mt-1 text-sm text-slate-500">
-              {stressIndex >= 50
-                ? 'High stress mode: identify the strongest pressure source.'
-                : 'Recovery mode: reinforce what is helping you thrive.'}
+              {isSparkMode ? "What's the spark?" : "What's the weight?"}
             </p>
 
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {!isSparkMode && !isStressedMode && (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                Moderate zone detected. We are using weight-focused chips to prevent escalation.
+              </p>
+            )}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {moodOptions.map((option) => (
                 <button
                   key={option.key}
@@ -176,8 +188,8 @@ function CopingPage() {
                   onClick={() => setSelectedMood(option.key)}
                   className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition ${
                     selectedMood === option.key
-                      ? 'border-sky-500 bg-sky-50 text-sky-800'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50/50'
+                      ? 'border-sky-500 bg-sky-50 text-sky-800 shadow-[0_8px_18px_rgba(3,105,161,0.12)]'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50/60'
                   }`}
                 >
                   {option.label}
@@ -187,15 +199,15 @@ function CopingPage() {
 
             {selectedMood === 'other' && (
               <div className="mt-4">
-                <label className="text-sm font-medium text-slate-600" htmlFor="custom-cause">
-                  Tell us what is affecting you
+                <label className="text-sm font-medium text-slate-600" htmlFor="custom-mood">
+                  Personalize your choice
                 </label>
                 <input
-                  id="custom-cause"
-                  value={customCause}
-                  onChange={(event) => setCustomCause(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-sky-400"
-                  placeholder="Type your reason here..."
+                  id="custom-mood"
+                  value={customMood}
+                  onChange={(event) => setCustomMood(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none ring-0 transition focus:border-sky-400"
+                  placeholder="e.g. Exam stress, relationship strain, family responsibilities"
                 />
               </div>
             )}
@@ -230,8 +242,8 @@ function CopingPage() {
             <button
               type="button"
               onClick={loadContextualPlan}
-              disabled={isLoadingPlan}
-              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={isLoadingPlan || (selectedMood === 'other' && !customMood.trim())}
+              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-700 px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(3,105,161,0.22)] transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Sparkles size={16} />
               {isLoadingPlan ? 'Generating Plan...' : 'Generate Personalized Plan'}
@@ -254,10 +266,10 @@ function CopingPage() {
             )}
           </article>
 
-          <article className="rounded-3xl border border-white/70 bg-white/45 p-6 shadow-[0_14px_34px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+          <article className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
             <h2 className="text-xl font-semibold text-slate-900">Sukoon Personal Guidance</h2>
-            <p className="mt-2 text-sm text-slate-500">{contextualPlan.mood_title}</p>
-            <p className="mt-3 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-800">{contextualPlan.urgency_note}</p>
+            <p className="mt-2 text-sm font-medium text-slate-500">{contextualPlan.mood_title}</p>
+            <p className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">{contextualPlan.urgency_note}</p>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Journaling Prompt</p>
@@ -282,9 +294,9 @@ function CopingPage() {
           </article>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_12px_32px_rgba(15,23,42,0.08)]">
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold text-slate-900">Local Recovery Events</h2>
+            <h2 className="text-xl font-semibold text-slate-900">Social Prescriptions</h2>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
               Source: {contextualPlan.events_source}
             </span>
@@ -297,13 +309,10 @@ function CopingPage() {
             <p className="mt-4 text-sm text-slate-600">No local events found right now. Try a nearby city name.</p>
           ) : (
             <div className="mt-4 grid gap-4 md:grid-cols-3">
-              {contextualPlan.events.map((eventItem) => (
-                <a
+              {contextualPlan.events.slice(0, 3).map((eventItem) => (
+                <article
                   key={`${eventItem.name}-${eventItem.date}`}
-                  href={eventItem.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-sky-300 hover:bg-sky-50"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-50"
                 >
                   <p className="text-sm font-semibold text-slate-900">{eventItem.name}</p>
                   <p className="mt-2 inline-flex items-center gap-1 text-xs text-slate-500">
@@ -317,14 +326,27 @@ function CopingPage() {
                   <p className="mt-2 text-xs font-medium text-sky-700">
                     {eventItem.is_free ? 'Free Event' : 'Paid Event'} | {eventItem.category}
                   </p>
-                </a>
+                  <div className="mt-3">
+                    <span className="inline-flex rounded-full border border-sky-200 bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-800">
+                      Clinical Recommendation
+                    </span>
+                  </div>
+                  <a
+                    href={eventItem.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-sky-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-800"
+                  >
+                    Join Community
+                  </a>
+                </article>
               ))}
             </div>
           )}
         </section>
 
         <section
-          className={`rounded-2xl border-2 border-rose-300 bg-rose-50 p-6 transition ${
+          className={`rounded-2xl border-2 border-rose-300 bg-rose-50 p-6 shadow-[0_14px_30px_rgba(244,63,94,0.12)] transition ${
             safetyExpanded ? 'ring-4 ring-rose-200' : ''
           }`}
         >
@@ -370,12 +392,6 @@ function CopingPage() {
           >
             <Heart size={16} />
             Start New Check-in
-          </Link>
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center justify-center rounded-xl border border-sky-300 bg-white px-6 py-3 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
-          >
-            Back to Dashboard
           </Link>
           <Link
             to="/history"

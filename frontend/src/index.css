@@ -1,8 +1,14 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 body {
   margin: 0;
-  font-family: "Segoe UI", Tahoma, sans-serif;
-  background: linear-gradient(160deg, #f4f8ff 0%, #edf5ff 55%, #ffffff 100%);
-  color: #111;
+  font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at 8% 0%, #d9f5f0 0%, #f6fbf9 42%, #fffdf7 100%);
+  color: #142633;
+}
+
+#root {
+  position: relative;
+  isolation: isolate;
 }

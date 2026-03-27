@@ -51,6 +51,12 @@ function getRiskBand(stressIndex) {
   }
 }
 
+function getCenterSeverity(stressIndex) {
+  if (stressIndex <= 30) return 'Low'
+  if (stressIndex <= 70) return 'Elevated'
+  return 'Critical'
+}
+
 function Dashboard({ analysisData }) {
   const { state } = useLocation()
   const [trendSummary, setTrendSummary] = useState(null)
@@ -76,30 +82,37 @@ function Dashboard({ analysisData }) {
 
   const stressIndex = Math.max(0, Math.min(100, Number(analysis?.stress_index ?? demoAnalysis.stress_index)))
   const status = analysis?.burnout_status || demoAnalysis.burnout_status
+  const trendStatus = analysis?.trend_status || analysis?.status || null
   const insightText = analysis?.gemini_insight?.insight || demoAnalysis.gemini_insight.insight
   const insightRecommendation = analysis?.gemini_insight?.recommendation || 'Take a short screen-free reset now.'
   const gaugeColor = getGaugeColor(stressIndex)
   const vocalFatigueScore = Number(analysis?.vocal_analysis?.vocal_fatigue_score ?? 0)
-  const showVocalBadge = vocalFatigueScore >= 0.6
+  const showVocalBadge = vocalFatigueScore > 0.7
   const riskBand = getRiskBand(stressIndex)
+  const centerSeverity = getCenterSeverity(stressIndex)
   const needleRotation = -90 + (stressIndex / 100) * 180
 
   const sourceData = useMemo(() => {
     const raw = [
       {
-        name: 'Screen Overload',
-        value: Number(analysis?.stress_breakdown?.screen_score ?? 50),
+        name: 'Screen',
+        value: Number(analysis?.stress_breakdown?.screen_score ?? 0) * 0.4,
         color: '#0EA5E9',
       },
       {
-        name: 'Physical Stagnation',
-        value: Number(analysis?.stress_breakdown?.sedentary_score ?? 30),
+        name: 'Sedentary',
+        value: Number(analysis?.stress_breakdown?.sedentary_score ?? 0) * 0.2,
         color: '#38BDF8',
       },
       {
-        name: 'Sleep Deficit',
-        value: Number(analysis?.stress_breakdown?.sleep_score ?? 20),
+        name: 'Sleep',
+        value: Number(analysis?.stress_breakdown?.sleep_score ?? 0) * 0.2,
         color: '#7DD3FC',
+      },
+      {
+        name: 'Vocal',
+        value: Number(analysis?.stress_breakdown?.vocal_score ?? 0) * 0.2,
+        color: '#0284C7',
       },
     ]
 
@@ -141,11 +154,33 @@ function Dashboard({ analysisData }) {
         if (payload?.status === 'RECOVERY_EXCELLENCE') {
           const module = await import('canvas-confetti')
           const confetti = module.default
-          confetti({
-            particleCount: 120,
-            spread: 75,
-            origin: { y: 0.6 },
-          })
+
+          const duration = 2400
+          const animationEnd = Date.now() + duration
+          const colors = ['#10B981', '#0EA5E9', '#22D3EE', '#A7F3D0']
+
+          const frame = () => {
+            confetti({
+              particleCount: 3,
+              angle: 60,
+              spread: 70,
+              origin: { x: 0, y: 0.6 },
+              colors,
+            })
+            confetti({
+              particleCount: 3,
+              angle: 120,
+              spread: 70,
+              origin: { x: 1, y: 0.6 },
+              colors,
+            })
+
+            if (Date.now() < animationEnd) {
+              requestAnimationFrame(frame)
+            }
+          }
+
+          frame()
         }
       } catch {
         setTrendSummary(null)
@@ -187,6 +222,7 @@ function Dashboard({ analysisData }) {
   }
 
   const ctaIsCritical = trendSummary?.status === 'CHRONIC_BURN_RISK'
+  const isChronicTheme = ctaIsCritical || trendStatus === 'CHRONIC_BURN_RISK'
   const ctaLabel = ctaIsCritical
     ? '⚠️ Critical Pattern Detected: Consult a Professional'
     : 'Explore Coping Strategies'
@@ -205,13 +241,21 @@ function Dashboard({ analysisData }) {
         : 'border-[#10B981]/25 bg-[#10B981]/10 text-[#047857]'
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#eff6ff_0%,_#f8fafc_45%,_#ffffff_100%)] px-5 py-8 text-slate-800 md:px-8 md:py-10">
+    <main
+      className={`min-h-screen px-5 py-8 text-slate-800 md:px-8 md:py-10 ${
+        isChronicTheme
+          ? 'bg-[radial-gradient(circle_at_top_left,_#fff1f2_0%,_#ffe4e6_45%,_#fff7f7_100%)]'
+          : 'bg-[radial-gradient(circle_at_top_left,_#eff6ff_0%,_#f8fafc_45%,_#ffffff_100%)]'
+      }`}
+    >
       <section className="mx-auto max-w-6xl space-y-6">
         <motion.header
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: 'easeOut' }}
-          className="rounded-2xl border border-sky-200/60 bg-white/80 px-5 py-4 backdrop-blur"
+          className={`rounded-2xl border bg-white/80 px-5 py-4 backdrop-blur ${
+            isChronicTheme ? 'border-rose-300/70' : 'border-sky-200/60'
+          }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -235,17 +279,40 @@ function Dashboard({ analysisData }) {
               <p className="text-sm font-medium text-slate-500">Vitality Gauge</p>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{riskBand.label}</span>
             </div>
-            <div className="relative mt-4 h-[320px]">
+
+            <div className="mt-5 flex flex-col items-center text-center">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <p className="text-5xl font-semibold leading-none sm:text-6xl" style={{ color: gaugeColor }}>
+                  {Math.round(stressIndex)}
+                </p>
+                {showVocalBadge ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-100 px-3 py-1 text-[11px] font-semibold text-rose-700">
+                    <AlertTriangle size={12} />
+                    Vocal Pattern: Fatigued (Prosodic Narrowing)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                    <Info size={12} />
+                    Vocal Pattern: Stable
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-sm font-medium" style={{ color: gaugeColor }}>
+                Stress Index • {centerSeverity}
+              </p>
+            </div>
+
+            <div className="relative mt-4 h-[250px] w-full sm:h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
                 <RadialBarChart
                   data={[{ name: 'Stress Index', value: stressIndex, fill: gaugeColor }]}
-                  innerRadius="62%"
+                  innerRadius="66%"
                   outerRadius="100%"
                   cx="50%"
-                  cy="90%"
+                  cy="84%"
                   startAngle={180}
                   endAngle={0}
-                  barSize={26}
+                  barSize={24}
                 >
                   <RadialBar
                     dataKey="value"
@@ -258,33 +325,27 @@ function Dashboard({ analysisData }) {
                 </RadialBarChart>
               </ResponsiveContainer>
 
-              <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-[74px]">
+              <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-[86px] sm:pb-[94px]">
                 <div
-                  className="h-24 w-[2px] origin-bottom rounded-full bg-slate-700/75"
+                  className="h-20 w-[2px] origin-bottom rounded-full bg-slate-700/75 sm:h-24"
                   style={{ transform: `rotate(${needleRotation}deg)` }}
                 />
-                <div className="absolute bottom-[70px] h-3 w-3 rounded-full border-2 border-white bg-slate-700" />
+                <div className="absolute bottom-[82px] h-3 w-3 rounded-full border-2 border-white bg-slate-700 sm:bottom-[90px]" />
               </div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35, duration: 0.4 }}
-                className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pb-8"
-              >
-                <p className="text-6xl font-semibold" style={{ color: gaugeColor }}>
-                  {Math.round(stressIndex)}
-                </p>
-                <p className="mt-1 text-sm font-medium text-slate-500">Stress Index</p>
-                <div className="mt-3 flex gap-2 text-[11px] font-medium text-slate-500">
-                  <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">0-30 Low</span>
-                  <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">31-70 Elevated</span>
-                  <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700">71-100 High</span>
-                </div>
-              </motion.div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35, duration: 0.4 }}
+              className="mt-1 flex flex-wrap items-center justify-center gap-2 text-[11px] font-medium text-slate-500 sm:text-xs"
+            >
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-700">0-30 Low</span>
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-700">31-70 Elevated</span>
+              <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-700">71-100 High</span>
+            </motion.div>
+
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-sm font-semibold text-slate-800">What this means</p>
               <p className="mt-1 text-sm leading-relaxed text-slate-600">{riskBand.explanation}</p>
             </div>
@@ -305,7 +366,7 @@ function Dashboard({ analysisData }) {
               <div className="h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={sourceData} layout="vertical" margin={{ top: 5, right: 10, left: 20, bottom: 5 }}>
-                    <XAxis type="number" domain={[0, 50]} hide />
+                    <XAxis type="number" domain={[0, 100]} hide />
                     <YAxis
                       dataKey="name"
                       type="category"
@@ -353,22 +414,7 @@ function Dashboard({ analysisData }) {
                   </p>
                 </div>
 
-                {showVocalBadge ? (
-                  <div className="group relative shrink-0">
-                    <div className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-100/90 px-3 py-1 text-[11px] font-semibold text-rose-700 shadow-[0_0_18px_rgba(239,68,68,0.35)]">
-                      <AlertTriangle size={12} />
-                      Prosodic Narrowing Detected
-                    </div>
-                    <div className="pointer-events-none absolute right-0 top-9 z-10 w-64 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs leading-relaxed text-slate-600 opacity-0 shadow-xl transition-opacity duration-200 group-hover:opacity-100">
-                      Vocal fatigue can reduce pitch and energy variability, often signaling mental overload and strain.
-                    </div>
-                  </div>
-                ) : (
-                  <div className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
-                    <Info size={12} />
-                    Vocal profile stable
-                  </div>
-                )}
+                <div className="hidden" />
               </div>
             </motion.article>
           </div>
@@ -389,6 +435,15 @@ function Dashboard({ analysisData }) {
             <p className="mt-2 text-sm text-rose-700/90">
               Most apps react after collapse. Sukoon identifies sustained chronic load and escalates early.
             </p>
+            <a
+              href="https://www.google.com/search?q=licensed+therapist+near+me+mental+health"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+            >
+              Professional Therapist Consultation
+              <ShieldAlert size={16} />
+            </a>
           </motion.section>
         )}
 

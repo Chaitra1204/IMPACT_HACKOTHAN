@@ -12,7 +12,7 @@
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.2",
     "axios": "^1.13.6",
-    "canvas-confetti": "^1.9.3",
+    "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.7.0",
     "react": "^19.2.4",

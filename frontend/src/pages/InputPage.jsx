@@ -8,6 +8,7 @@ const steps = ['1. Data', '2. Analysis', '3. Action']
 
 function getSupportedAudioMimeType() {
   const candidates = [
+    'audio/wav',
     'audio/webm;codecs=opus',
     'audio/webm',
     'audio/ogg;codecs=opus',
@@ -15,6 +16,15 @@ function getSupportedAudioMimeType() {
   ]
 
   return candidates.find((mime) => MediaRecorder.isTypeSupported(mime)) || ''
+}
+
+function getExtensionFromMimeType(mimeType) {
+  if (!mimeType) return 'webm'
+  if (mimeType.includes('wav')) return 'wav'
+  if (mimeType.includes('ogg')) return 'ogg'
+  if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3'
+  if (mimeType.includes('mp4') || mimeType.includes('m4a')) return 'm4a'
+  return 'webm'
 }
 
 function writeString(view, offset, text) {
@@ -109,12 +119,16 @@ function InputPage() {
   const [isConvertingAudio, setIsConvertingAudio] = useState(false)
   const [isPlayingPreview, setIsPlayingPreview] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState(0)
   const [error, setError] = useState('')
 
   const mediaRecorderRef = useRef(null)
   const streamRef = useRef(null)
   const chunksRef = useRef([])
   const previewAudioRef = useRef(null)
+  const recordingTimeoutRef = useRef(null)
+  const recordingIntervalRef = useRef(null)
+  const MAX_RECORDING_MS = 60000
 
   const apiBaseUrl = useMemo(() => {
     return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
@@ -127,6 +141,12 @@ function InputPage() {
       }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop())
+      }
+      if (recordingTimeoutRef.current) {
+        clearTimeout(recordingTimeoutRef.current)
+      }
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current)
       }
     }
   }, [audioPreviewUrl])
@@ -167,16 +187,35 @@ function InputPage() {
 
       recorder.onstop = async () => {
         try {
+          if (recordingTimeoutRef.current) {
+            clearTimeout(recordingTimeoutRef.current)
+            recordingTimeoutRef.current = null
+          }
+
           setIsConvertingAudio(true)
+          const sourceMimeType = recorder.mimeType || 'audio/webm'
           const recordedBlob = new Blob(chunksRef.current, {
-            type: recorder.mimeType || 'audio/webm',
+            type: sourceMimeType,
           })
-          const wavBlob = await convertRecordedBlobToWav(recordedBlob)
-          const wavFile = new File([wavBlob], `sukoon-recording-${Date.now()}.wav`, {
-            type: 'audio/wav',
-          })
-          updateAudioFile(wavFile)
-          toast.success('Recording ready for review.')
+
+          try {
+            const wavBlob = await convertRecordedBlobToWav(recordedBlob)
+            const wavFile = new File([wavBlob], `sukoon-recording-${Date.now()}.wav`, {
+              type: 'audio/wav',
+            })
+            updateAudioFile(wavFile)
+            setError('')
+            toast.success('Recording ready for review.')
+          } catch (conversionError) {
+            // Fallback: keep native recorded format so analysis can continue.
+            const ext = getExtensionFromMimeType(sourceMimeType)
+            const fallbackFile = new File([recordedBlob], `sukoon-recording-${Date.now()}.${ext}`, {
+              type: sourceMimeType,
+            })
+            updateAudioFile(fallbackFile)
+            setError('')
+            toast('WAV conversion skipped. Using recorded format for analysis.')
+          }
         } catch (conversionError) {
           console.error(conversionError)
           setError('Unable to convert recording to WAV. Please try again.')
@@ -191,6 +230,19 @@ function InputPage() {
       }
 
       recorder.start()
+      setRecordingElapsedSeconds(0)
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingElapsedSeconds((prev) => prev + 1)
+      }, 1000)
+
+      recordingTimeoutRef.current = setTimeout(() => {
+        if (recorder.state !== 'inactive') {
+          recorder.stop()
+          setIsRecording(false)
+          toast('Max recording length reached (60s).')
+        }
+      }, MAX_RECORDING_MS)
+
       setIsRecording(true)
       toast.success('Recording started.')
     } catch (recordError) {
@@ -201,6 +253,15 @@ function InputPage() {
   }
 
   const stopRecording = () => {
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current)
+      recordingTimeoutRef.current = null
+    }
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current)
+      recordingIntervalRef.current = null
+    }
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
@@ -255,11 +316,20 @@ function InputPage() {
     }
 
     try {
+      const existingHistory = JSON.parse(localStorage.getItem('sukoon_history') || '[]')
+      const recent = existingHistory.slice(0, 7)
+      const historyAvg = recent.length
+        ? recent.reduce((sum, item) => sum + Number(item?.stress_index || 0), 0) / recent.length
+        : null
+
       const requestBody = new FormData()
       requestBody.append('screen_time', String(screenTime))
       requestBody.append('sedentary_time', String(sedentaryTime))
       requestBody.append('sleep_hours', String(convertSleepQualityToHours(sleepQuality)))
       requestBody.append('user_text', textReflection.trim() || 'Voice-based check-in requested by the user.')
+      if (historyAvg !== null) {
+        requestBody.append('history_avg', String(Number(historyAvg.toFixed(2))))
+      }
 
       if (mode === 'vocal' && audioFile) {
         requestBody.append('audio_file', audioFile, audioFile.name)
@@ -294,7 +364,6 @@ function InputPage() {
         result: normalizedPayload,
       }
 
-      const existingHistory = JSON.parse(localStorage.getItem('sukoon_history') || '[]')
       const nextHistory = [historyEntry, ...existingHistory].slice(0, 50)
       localStorage.setItem('sukoon_history', JSON.stringify(nextHistory))
 
@@ -395,16 +464,39 @@ function InputPage() {
             </div>
           ) : (
             <div className="mt-5 rounded-2xl border border-[#0369A1]/20 bg-[#F8FAFC] p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={toggleRecording}
-                  disabled={isConvertingAudio}
-                  className={`record-button ${isRecording ? 'is-recording' : ''}`}
-                >
-                  <AudioWaveform size={18} />
-                  {isRecording ? 'Stop' : 'Record'}
-                </button>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="relative flex items-center justify-center">
+                  {isRecording && (
+                    <>
+                      <motion.span
+                        className="absolute h-28 w-28 rounded-full bg-[#0369A1]/20"
+                        animate={{ scale: [1, 1.35, 1], opacity: [0.6, 0.15, 0.6] }}
+                        transition={{ duration: 1.2, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }}
+                      />
+                      <motion.span
+                        className="absolute h-36 w-36 rounded-full bg-[#0369A1]/10"
+                        animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0.1, 0.5] }}
+                        transition={{ duration: 1.4, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut', delay: 0.2 }}
+                      />
+                    </>
+                  )}
+
+                  <motion.button
+                    type="button"
+                    onClick={toggleRecording}
+                    disabled={isConvertingAudio}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.98 }}
+                    className={`relative z-10 inline-flex h-20 w-20 items-center justify-center rounded-full border text-white shadow-[0_12px_24px_rgba(3,105,161,0.35)] transition ${
+                      isRecording
+                        ? 'border-[#0C4A6E] bg-[#0C4A6E]'
+                        : 'border-[#03537d] bg-[#0369A1] hover:bg-[#03537d]'
+                    } disabled:cursor-not-allowed disabled:opacity-80`}
+                    aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+                  >
+                    {isRecording ? <Pause size={28} /> : <Mic size={28} />}
+                  </motion.button>
+                </div>
 
                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#0369A1]/25 bg-white px-3 py-2 text-sm font-medium text-[#1E293B]">
                   Upload audio
@@ -435,7 +527,7 @@ function InputPage() {
               {isRecording && (
                 <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#EF4444]">
                   <span className="recording-dot" />
-                  Recording...
+                  Recording... {recordingElapsedSeconds}s
                 </p>
               )}
 
@@ -455,7 +547,7 @@ function InputPage() {
               )}
 
               <p className="mt-3 text-xs text-[#1E293B]/60">
-                Record, stop, then use Play to review before analysis.
+                Tap Record to start and tap again to stop. Max length: 60 seconds.
               </p>
             </div>
           )}
@@ -472,14 +564,16 @@ function InputPage() {
               {isAnalyzing ? (
                 <>
                   <span className="medical-spinner" />
-                  Scanning Biomarkers...
+                  Extracting Vocal Biomarkers...
                 </>
               ) : (
                 'Analyze'
               )}
             </button>
             {isAnalyzing && (
-              <p className="text-sm text-[#1E293B]/70">Processing your profile with clinical safeguards...</p>
+              <p className="text-sm text-[#1E293B]/70">
+                Extracting Vocal Biomarkers & Calculating Cognitive Load...
+              </p>
             )}
           </div>
         </div>
